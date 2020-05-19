@@ -1,5 +1,7 @@
 package octopus
 
+import "encoding/json"
+
 type Machine struct {
 	Name      string
 	Status    string
@@ -16,6 +18,25 @@ type Tenant struct {
 	ID         string
 	Name       string
 	ProjectIDs []string
+}
+
+func (t *Tenant) UnmarshalJSON(data []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	m := v.(map[string]interface{})
+
+	t.ID = m["Id"].(string)
+	t.Name = m["Name"].(string)
+	t.ProjectIDs = []string{}
+
+	for k := range m["ProjectEnvironments"].(map[string]interface{}) {
+		t.ProjectIDs = append(t.ProjectIDs, k)
+	}
+
+	return nil
 }
 
 type client interface {
