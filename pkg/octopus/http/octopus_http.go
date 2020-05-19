@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -29,4 +30,35 @@ func New(doer httpDoer, instanceURL string, space string, apiKey string) Service
 		apiBaseURL: fmt.Sprintf("%s/api/%s", instanceURL, space),
 		apiKey:     apiKey,
 	}
+}
+
+func (s Service) createDataRequest(url string) (*http.Request, error) {
+	req, err := http.NewRequest(
+		"GET",
+		fmt.Sprintf("%s/%s", s.apiBaseURL, url),
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating request object: %v", err)
+	}
+
+	req.Header.Add("Content-type", "application/json")
+	req.Header.Add("X-Octopus-ApiKey", s.apiKey)
+
+	return req, nil
+}
+
+func handleErrorResponse(resp *http.Response, caller string) error {
+	defer resp.Body.Close()
+
+	var e errorResponse
+	err := json.NewDecoder(resp.Body).Decode(&e)
+	e.StatusCode = resp.StatusCode
+
+	if err != nil {
+		return fmt.Errorf("Error decoding JSON: %v", err)
+	}
+
+	return fmt.Errorf("Error retrieving %s data: %+v", caller, e)
 }

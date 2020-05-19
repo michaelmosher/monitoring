@@ -9,7 +9,7 @@ import (
 )
 
 func (s Service) FetchTenants() ([]octopus.Tenant, error) {
-	req, err := s.createTenantDataRequest("all")
+	req, err := s.createDataRequest("tenants/all")
 
 	if err != nil {
 		return nil, fmt.Errorf("error creating API request: %v", err)
@@ -18,7 +18,7 @@ func (s Service) FetchTenants() ([]octopus.Tenant, error) {
 	resp, err := s.httpClient.Do(req)
 
 	if resp.StatusCode != 200 {
-		return nil, handleTenantErrorRepsonse(resp)
+		return nil, handleErrorResponse(resp, "tenants")
 	}
 
 	if err != nil {
@@ -35,7 +35,7 @@ func (s Service) FetchTenant(tenantID string) (octopus.Tenant, error) {
 		return t, fmt.Errorf("no u. Use FetchTenants instead")
 	}
 
-	req, err := s.createTenantDataRequest(tenantID)
+	req, err := s.createDataRequest(fmt.Sprintf("tenants/%s", tenantID))
 
 	if err != nil {
 		return t, fmt.Errorf("error creating API request: %v", err)
@@ -44,7 +44,7 @@ func (s Service) FetchTenant(tenantID string) (octopus.Tenant, error) {
 	resp, err := s.httpClient.Do(req)
 
 	if resp.StatusCode != 200 {
-		return t, handleTenantErrorRepsonse(resp)
+		return t, handleErrorResponse(resp, "tenant")
 	}
 
 	if err != nil {
@@ -52,37 +52,6 @@ func (s Service) FetchTenant(tenantID string) (octopus.Tenant, error) {
 	}
 
 	return t, handleTenantResponse(resp, &t)
-}
-
-func (s Service) createTenantDataRequest(tenantID string) (*http.Request, error) {
-	req, err := http.NewRequest(
-		"GET",
-		fmt.Sprintf("%s/tenants/%s", s.apiBaseURL, tenantID),
-		nil,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating request object: %v", err)
-	}
-
-	req.Header.Add("Content-type", "application/json")
-	req.Header.Add("X-Octopus-ApiKey", s.apiKey)
-
-	return req, nil
-}
-
-func handleTenantErrorRepsonse(resp *http.Response) error {
-	defer resp.Body.Close()
-
-	var e errorResponse
-	err := json.NewDecoder(resp.Body).Decode(&e)
-	e.StatusCode = resp.StatusCode
-
-	if err != nil {
-		return fmt.Errorf("Error decoding JSON: %v", err)
-	}
-
-	return fmt.Errorf("Error retrieving tenant data: %+v", e)
 }
 
 func handleTenantsResponse(resp *http.Response) ([]octopus.Tenant, error) {

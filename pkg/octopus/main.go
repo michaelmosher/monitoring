@@ -7,6 +7,11 @@ type Machine struct {
 	TenantIds []string
 }
 
+type Project struct {
+	ID   string
+	Name string
+}
+
 type Tenant struct {
 	ID         string
 	Name       string
@@ -16,6 +21,9 @@ type Tenant struct {
 type client interface {
 	FetchMachines() ([]Machine, error)
 	FetchMachine(machineID string) (Machine, error)
+
+	FetchProjects() ([]Project, error)
+	FetchProject(projectID string) (Project, error)
 
 	FetchTenants() ([]Tenant, error)
 	FetchTenant(tenantID string) (Tenant, error)
@@ -37,6 +45,14 @@ func (s Service) FetchMachines() ([]Machine, error) {
 
 func (s Service) FetchMachine(machineID string) (Machine, error) {
 	return s.client.FetchMachine(machineID)
+}
+
+func (s Service) FetchProjects() ([]Project, error) {
+	return s.client.FetchProjects()
+}
+
+func (s Service) FetchProject(projectID string) (Project, error) {
+	return s.client.FetchProject(projectID)
 }
 
 func (s Service) FetchTenants() ([]Tenant, error) {
