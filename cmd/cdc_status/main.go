@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsimple"
 
 	"github.com/michaelmosher/monitoring/pkg/cdc"
@@ -19,6 +20,7 @@ type octopusConfig struct {
 	APIKey      string   `hcl:"apiKey"`
 	Space       string   `hcl:"space"`
 	CDCProjects []string `hcl:"cdcProjects"`
+	Extra       hcl.Body `hcl:",remain"`
 }
 
 type metriclyConfig struct {
