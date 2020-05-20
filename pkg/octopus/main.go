@@ -5,8 +5,30 @@ import "encoding/json"
 type Machine struct {
 	Name      string
 	Status    string
-	Roles     []string
-	TenantIds []string
+	Roles     map[string]struct{}
+	TenantIDs map[string]struct{}
+}
+
+func (m *Machine) UnmarshalJSON(data []byte) error {
+	var v map[string]interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	m.Name = v["Name"].(string)
+	m.Status = v["Status"].(string)
+	m.Roles = make(map[string]struct{})
+	m.TenantIDs = make(map[string]struct{})
+
+	for _, k := range v["Roles"].([]interface{}) {
+		m.Roles[k.(string)] = struct{}{}
+	}
+
+	for _, k := range v["TenantIds"].([]interface{}) {
+		m.TenantIDs[k.(string)] = struct{}{}
+	}
+
+	return nil
 }
 
 type Project struct {
@@ -17,23 +39,21 @@ type Project struct {
 type Tenant struct {
 	ID         string
 	Name       string
-	ProjectIDs []string
+	ProjectIDs map[string]struct{}
 }
 
 func (t *Tenant) UnmarshalJSON(data []byte) error {
-	var v interface{}
+	var v map[string]interface{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
 	}
 
-	m := v.(map[string]interface{})
+	t.ID = v["Id"].(string)
+	t.Name = v["Name"].(string)
+	t.ProjectIDs = make(map[string]struct{})
 
-	t.ID = m["Id"].(string)
-	t.Name = m["Name"].(string)
-	t.ProjectIDs = []string{}
-
-	for k := range m["ProjectEnvironments"].(map[string]interface{}) {
-		t.ProjectIDs = append(t.ProjectIDs, k)
+	for k := range v["ProjectEnvironments"].(map[string]interface{}) {
+		t.ProjectIDs[k] = struct{}{}
 	}
 
 	return nil

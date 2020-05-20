@@ -3,17 +3,22 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os/user"
+	"time"
 
 	"github.com/hashicorp/hcl/v2/hclsimple"
 
 	"github.com/michaelmosher/monitoring/pkg/cdc"
+	"github.com/michaelmosher/monitoring/pkg/octopus"
+	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
 
 type octopusConfig struct {
-	InstanceURL string `hcl:"instanceURL"`
-	APIKey      string `hcl:"apiKey"`
-	Space       string `hcl:"space"`
+	InstanceURL string   `hcl:"instanceURL"`
+	APIKey      string   `hcl:"apiKey"`
+	Space       string   `hcl:"space"`
+	CDCProjects []string `hcl:"cdcProjects"`
 }
 
 type metriclyConfig struct {
@@ -30,23 +35,44 @@ func main() {
 	var config mainConfig
 	readConfigFile(&config)
 
-	statuses, err := cdc.CheckStatus(
-		config.Metricly.Username,
-		config.Metricly.Password,
-		config.Octopus.InstanceURL,
-		config.Octopus.Space,
-		config.Octopus.APIKey,
-	)
-
-	if err != nil {
-		log.Fatalf("cdc.CheckStatus error: %s", err)
+	service := cdc.Service{
+		Octo: octopus.New(
+			octopus_http.New(
+				&http.Client{
+					Timeout: 10 * time.Second,
+				},
+				config.Octopus.InstanceURL,
+				config.Octopus.Space,
+				config.Octopus.APIKey,
+			),
+		),
 	}
 
 	fmt.Println("Current CDC Install/Replication status:")
 
-	printStatus(offlineStatus, statuses)
-	printStatus(notReplicatingStatus, statuses)
-	printStatus(aosStatus, statuses)
+	nucsChan := make(chan string)
+
+	go func() {
+		nucs, _ := service.CheckOfflineNUCs(config.Octopus.CDCProjects...)
+		for _, n := range nucs {
+			nucsChan <- n
+		}
+		close(nucsChan)
+	}()
+
+	first := <-nucsChan
+
+	if first == "" {
+		// unset value means the channel closed without sending data
+		fmt.Println("  - NUCs offline this morning: none")
+	} else {
+		fmt.Println("  - NUCs offline this morning:")
+		fmt.Printf("    - %s\n", first)
+	}
+
+	for n := range nucsChan {
+		fmt.Printf("    - %s\n", n)
+	}
 }
 
 func readConfigFile(cfg *mainConfig) {
@@ -57,57 +83,4 @@ func readConfigFile(cfg *mainConfig) {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %s", err)
 	}
-}
-
-func printStatus(statusFn func(map[string]cdc.Status) bool, statuses map[string]cdc.Status) {
-	if ok := statusFn(statuses); ok {
-		// if everything is good, print that nothing is bad.
-		fmt.Println("none")
-		return
-	}
-
-	fmt.Println("")
-}
-
-func offlineStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - NUCs offline this morning: ")
-
-	allGood := true
-	for _, status := range statuses {
-		if !status.Online && !status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", status.Name)
-		}
-	}
-
-	return allGood
-}
-
-func notReplicatingStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - NUCs or VMs Online but not replicating: ")
-
-	allGood := true
-	for _, status := range statuses {
-		onlineButNotReplicating := status.Online && !status.Replicating
-		if onlineButNotReplicating && !status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", status.Name)
-		}
-	}
-
-	return allGood
-}
-
-func aosStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - AOS Systems not replicating (name lookup coming soon): ")
-
-	allGood := true
-	for uaid, status := range statuses {
-		if !status.Replicating && status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", uaid)
-		}
-	}
-
-	return allGood
 }
