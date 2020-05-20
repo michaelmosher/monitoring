@@ -52,16 +52,30 @@ func main() {
 
 	fmt.Println("Current CDC Install/Replication status:")
 
-	nucsChan := make(chan string)
+	offline := make(chan string)
 
 	go func() {
 		nucs, _ := service.CheckOfflineNUCs(config.Octopus.CDCProjects...)
 		for _, n := range nucs {
-			nucsChan <- n
+			offline <- n
 		}
-		close(nucsChan)
+		close(offline)
 	}()
 
+	printOfflineNUCs(offline)
+}
+
+func readConfigFile(cfg *mainConfig) {
+	usr, _ := user.Current()
+	configFile := fmt.Sprintf("%s/.monitoring/cdc_status.hcl", usr.HomeDir)
+
+	err := hclsimple.DecodeFile(configFile, nil, cfg)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %s", err)
+	}
+}
+
+func printOfflineNUCs(nucsChan <-chan string) {
 	first := <-nucsChan
 
 	if first == "" {
@@ -74,15 +88,5 @@ func main() {
 
 	for n := range nucsChan {
 		fmt.Printf("    - %s\n", n)
-	}
-}
-
-func readConfigFile(cfg *mainConfig) {
-	usr, _ := user.Current()
-	configFile := fmt.Sprintf("%s/.monitoring/cdc_status.hcl", usr.HomeDir)
-
-	err := hclsimple.DecodeFile(configFile, nil, cfg)
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %s", err)
 	}
 }
