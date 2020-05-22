@@ -9,7 +9,7 @@ import (
 )
 
 func (s Service) FetchTenants() ([]octopus.Tenant, error) {
-	req, err := s.createDataRequest("tenants/all")
+	req, err := s.createDataRequest("tenantvariables/all")
 
 	if err != nil {
 		return nil, fmt.Errorf("error creating API request: %v", err)
