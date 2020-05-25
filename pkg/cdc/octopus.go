@@ -2,22 +2,19 @@ package cdc
 
 import (
 	"fmt"
-	"net/http"
 
 	"github.com/michaelmosher/monitoring/pkg/octopus"
-	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
 
-func octopusHTTPService(httpClient *http.Client, url string, space string, apiKey string) octopus.Service {
-	return octopus.New(
-		octopus_http.New(httpClient, url, space, apiKey),
-	)
-}
+const (
+	nucOctopusRole = "side-server-appliances"
+	vmOctopusRole  = "linux-server"
+)
 
-func (s Service) getOfflineNUCs() ([]octopus.Machine, error) {
+func (s *Service) getOfflineNUCs() ([]octopus.Machine, error) {
 	offlineNUCs := []octopus.Machine{}
 
-	allMachines, err := s.Octo.FetchMachines()
+	allMachines, err := s.Octopus.FetchMachines()
 
 	if err != nil {
 		return nil, fmt.Errorf("octopus.FetchMachines error: %s", err)
@@ -28,7 +25,7 @@ func (s Service) getOfflineNUCs() ([]octopus.Machine, error) {
 			continue
 		}
 
-		if _, ok := machine.Roles["side-server-appliances"]; ok == false {
+		if _, ok := machine.Roles[nucOctopusRole]; ok == false {
 			continue
 		}
 
@@ -38,10 +35,37 @@ func (s Service) getOfflineNUCs() ([]octopus.Machine, error) {
 	return offlineNUCs, nil
 }
 
-func (s Service) getOctopusTenants() (tenantMap, error) {
-	tm := make(tenantMap)
+func (s *Service) getOnlineMachines() ([]octopus.Machine, error) {
+	onlineNUCs := []octopus.Machine{}
 
-	tenants, err := s.Octo.FetchTenants()
+	allMachines, err := s.Octopus.FetchMachines()
+
+	if err != nil {
+		return nil, fmt.Errorf("octopus.FetchMachines error: %s", err)
+	}
+
+	for _, machine := range allMachines {
+		if machine.Status == "Offline" {
+			continue
+		}
+
+		_, sideServer := machine.Roles[nucOctopusRole]
+		_, linuxServer := machine.Roles[vmOctopusRole]
+
+		if !sideServer && !linuxServer {
+			continue
+		}
+
+		onlineNUCs = append(onlineNUCs, machine)
+	}
+
+	return onlineNUCs, nil
+}
+
+func (s *Service) getOctopusTenants() (map[string]octopus.Tenant, error) {
+	tm := make(map[string]octopus.Tenant)
+
+	tenants, err := s.Octopus.FetchTenants()
 
 	if err != nil {
 		return nil, fmt.Errorf("octopus.FetchTenants error: %s", err)
@@ -54,11 +78,11 @@ func (s Service) getOctopusTenants() (tenantMap, error) {
 	return tm, nil
 }
 
-func (s Service) getOctopusProjectIDs(projectNames ...string) ([]string, error) {
+func (s *Service) getOctopusProjectIDs(projectNames ...string) ([]string, error) {
 	projectIDs := make([]string, 0, len(projectNames))
 
 	for _, name := range projectNames {
-		project, err := s.Octo.FetchProject(name)
+		project, err := s.Octopus.FetchProject(name)
 
 		if err != nil {
 			return nil, fmt.Errorf("octopus.FetchProject(%s) error: %s", name, err)

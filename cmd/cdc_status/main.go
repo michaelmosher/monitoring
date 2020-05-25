@@ -11,6 +11,9 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsimple"
 
 	"github.com/michaelmosher/monitoring/pkg/cdc"
+
+	"github.com/michaelmosher/monitoring/pkg/metricly"
+	metricly_http "github.com/michaelmosher/monitoring/pkg/metricly/http"
 	"github.com/michaelmosher/monitoring/pkg/octopus"
 	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
@@ -37,12 +40,21 @@ func main() {
 	var config mainConfig
 	readConfigFile(&config)
 
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
 	service := cdc.Service{
-		Octo: octopus.New(
+		Metricly: metricly.New(
+			metricly_http.Service{
+				HTTPClient: httpClient,
+				Username:   config.Metricly.Username,
+				Password:   config.Metricly.Password,
+			},
+		),
+		Octopus: octopus.New(
 			octopus_http.New(
-				&http.Client{
-					Timeout: 10 * time.Second,
-				},
+				httpClient,
 				config.Octopus.InstanceURL,
 				config.Octopus.Space,
 				config.Octopus.APIKey,
@@ -62,7 +74,19 @@ func main() {
 		close(offline)
 	}()
 
+	idle := make(chan string)
+
+	go func() {
+		machines, _ := service.CheckIdleMachines(config.Octopus.CDCProjects...)
+
+		for _, n := range machines {
+			idle <- n
+		}
+		close(idle)
+	}()
+
 	printOfflineNUCs(offline)
+	printIdleMachines(idle)
 }
 
 func readConfigFile(cfg *mainConfig) {
@@ -76,17 +100,26 @@ func readConfigFile(cfg *mainConfig) {
 }
 
 func printOfflineNUCs(nucsChan <-chan string) {
-	first := <-nucsChan
+	printFromChannel("NUCs offline this morning", nucsChan)
+}
+
+func printIdleMachines(idleChan <-chan string) {
+	printFromChannel("NUCs or VMs Online but not replicating", idleChan)
+}
+
+func printFromChannel(summary string, channel <-chan string) {
+	first := <-channel
+
+	fmt.Printf("  - %s:", summary)
 
 	if first == "" {
 		// unset value means the channel closed without sending data
-		fmt.Println("  - NUCs offline this morning: none")
+		fmt.Println("none")
 	} else {
-		fmt.Println("  - NUCs offline this morning:")
-		fmt.Printf("    - %s\n", first)
+		fmt.Printf("\n    - %s\n", first)
 	}
 
-	for n := range nucsChan {
+	for n := range channel {
 		fmt.Printf("    - %s\n", n)
 	}
 }
