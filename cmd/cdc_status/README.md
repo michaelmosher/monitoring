@@ -15,9 +15,19 @@ Metricly {
 }
 
 Octopus {
-    instanceURL = "https://<your organization>.octopus.app"
-    apiKey      = "<your API Key>"
-    space       = "<the Octopus Space to query>"
+    credentials "ASI" {
+        instanceURL = "https://<your first organization>.octopus.app"
+        apiKey      = "<your API Key>"
+        space       = "<the Octopus Space to query>"
+    }
+
+    credentials "AOS" {
+        instanceURL = "https://<your second organization>.octopus.app"
+        apiKey      = "<your API Key>"
+        space       = "<the Octopus Space to query>"
+    }
+
+    cdcProjects = ["<project-name-1>", "<project-name-2>"]
 }
 ```
 

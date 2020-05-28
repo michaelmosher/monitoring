@@ -3,17 +3,32 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os/user"
+	"time"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsimple"
 
 	"github.com/michaelmosher/monitoring/pkg/cdc"
+
+	"github.com/michaelmosher/monitoring/pkg/metricly"
+	metricly_http "github.com/michaelmosher/monitoring/pkg/metricly/http"
+	"github.com/michaelmosher/monitoring/pkg/octopus"
+	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
 
-type octopusConfig struct {
+type octopusCredentials struct {
+	Label       string `hcl:",label"`
 	InstanceURL string `hcl:"instanceURL"`
 	APIKey      string `hcl:"apiKey"`
 	Space       string `hcl:"space"`
+}
+
+type octopusConfig struct {
+	Credentials []octopusCredentials `hcl:"credentials,block"`
+	CDCProjects []string             `hcl:"cdcProjects"`
+	Extra       hcl.Body             `hcl:",remain"`
 }
 
 type metriclyConfig struct {
@@ -30,23 +45,74 @@ func main() {
 	var config mainConfig
 	readConfigFile(&config)
 
-	statuses, err := cdc.CheckStatus(
-		config.Metricly.Username,
-		config.Metricly.Password,
-		config.Octopus.InstanceURL,
-		config.Octopus.Space,
-		config.Octopus.APIKey,
-	)
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 
-	if err != nil {
-		log.Fatalf("cdc.CheckStatus error: %s", err)
+	service := cdc.Service{
+		Metricly: metricly.New(
+			metricly_http.Service{
+				HTTPClient: httpClient,
+				Username:   config.Metricly.Username,
+				Password:   config.Metricly.Password,
+			},
+		),
+	}
+
+	var asiOcto, aosOcto octopus.Service
+
+	for _, block := range config.Octopus.Credentials {
+		if block.Label == "ASI" {
+			asiOcto = octopus.New(
+				octopus_http.New(httpClient, block.InstanceURL, block.Space, block.APIKey),
+			)
+		}
+
+		if block.Label == "AOS" {
+			aosOcto = octopus.New(
+				octopus_http.New(httpClient, block.InstanceURL, block.Space, block.APIKey),
+			)
+		}
 	}
 
 	fmt.Println("Current CDC Install/Replication status:")
 
-	printStatus(offlineStatus, statuses)
-	printStatus(notReplicatingStatus, statuses)
-	printStatus(aosStatus, statuses)
+	offline := make(chan string)
+
+	go func() {
+		defer close(offline)
+
+		nucs, _ := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
+		for _, n := range nucs {
+			offline <- n
+		}
+	}()
+
+	idle := make(chan string)
+
+	go func() {
+		defer close(idle)
+
+		machines, _ := service.CheckIdleMachines(asiOcto, config.Octopus.CDCProjects...)
+		for _, n := range machines {
+			idle <- n
+		}
+	}()
+
+	aosIdle := make(chan string)
+
+	go func() {
+		defer close(aosIdle)
+
+		machines, _ := service.CheckIdleMachines(aosOcto, config.Octopus.CDCProjects...)
+		for _, n := range machines {
+			aosIdle <- n
+		}
+	}()
+
+	printOfflineNUCs(offline)
+	printIdleASIMachines(idle)
+	printIdleAOSMachines(aosIdle)
 }
 
 func readConfigFile(cfg *mainConfig) {
@@ -59,55 +125,31 @@ func readConfigFile(cfg *mainConfig) {
 	}
 }
 
-func printStatus(statusFn func(map[string]cdc.Status) bool, statuses map[string]cdc.Status) {
-	if ok := statusFn(statuses); ok {
-		// if everything is good, print that nothing is bad.
-		fmt.Println("none")
-		return
-	}
-
-	fmt.Println("")
+func printOfflineNUCs(nucsChan <-chan string) {
+	printFromChannel("NUCs offline this morning", nucsChan)
 }
 
-func offlineStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - NUCs offline this morning: ")
-
-	allGood := true
-	for _, status := range statuses {
-		if !status.Online && !status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", status.Name)
-		}
-	}
-
-	return allGood
+func printIdleASIMachines(idleChan <-chan string) {
+	printFromChannel("NUCs or VMs Online but not replicating", idleChan)
 }
 
-func notReplicatingStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - NUCs or VMs Online but not replicating: ")
-
-	allGood := true
-	for _, status := range statuses {
-		onlineButNotReplicating := status.Online && !status.Replicating
-		if onlineButNotReplicating && !status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", status.Name)
-		}
-	}
-
-	return allGood
+func printIdleAOSMachines(idleChan <-chan string) {
+	printFromChannel("AOS Systems not replicating", idleChan)
 }
 
-func aosStatus(statuses map[string]cdc.Status) bool {
-	fmt.Print("  - AOS Systems not replicating (name lookup coming soon): ")
+func printFromChannel(summary string, channel <-chan string) {
+	first := <-channel
 
-	allGood := true
-	for uaid, status := range statuses {
-		if !status.Replicating && status.AOS {
-			allGood = false
-			fmt.Printf("\n    - %s", uaid)
-		}
+	fmt.Printf("  - %s:", summary)
+
+	if first == "" {
+		// unset value means the channel closed without sending data
+		fmt.Println(" none")
+	} else {
+		fmt.Printf("\n    - %s\n", first)
 	}
 
-	return allGood
+	for n := range channel {
+		fmt.Printf("    - %s\n", n)
+	}
 }

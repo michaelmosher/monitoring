@@ -3,34 +3,22 @@ package cdc
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/michaelmosher/monitoring/pkg/metricly"
-	metricly_http "github.com/michaelmosher/monitoring/pkg/metricly/http"
 )
 
 const metriclyMaxResults = 60
 const metriclyWorkers = 8
 
 type metriclyStatus struct {
-	uaid        string
-	replicating bool
+	uaid   string
+	sample float64
 }
 
-func metriclyHTTPService(httpClient *http.Client, username string, password string) metricly.Service {
-	return metricly.New(
-		metricly_http.Service{
-			HTTPClient: httpClient,
-			Username:   username,
-			Password:   password,
-		},
-	)
-}
-
-func getMetriclyList(service metricly.Service) ([]metricly.Metric, error) {
+func getMetriclyList(service metriclyClient) ([]metricly.Metric, error) {
 	metricsQuery := new(metricly.MetricQuery).
 		SetStartDate(time.Now().Add(-1*time.Hour)).
 		SetEndDate(time.Now()).
@@ -44,14 +32,12 @@ func getMetriclyList(service metricly.Service) ([]metricly.Metric, error) {
 	return service.FetchMetrics(*metricsQuery)
 }
 
-func getMetricStatus(service metricly.Service, metric metricly.Metric) (metriclyStatus, error) {
+func getMetricStatus(service metriclyClient, metric metricly.Metric) (metriclyStatus, error) {
 	val, err := service.FetchMetricValue(metric)
 
-	// log.Printf("%s latency: %d\n", metric.FQN, int(val))
-
 	return metriclyStatus{
-		uaid:        getUAIDFromFQN(metric.FQN),
-		replicating: int(val) < 600,
+		uaid:   getUAIDFromFQN(metric.FQN),
+		sample: val,
 	}, err
 }
 
@@ -59,8 +45,8 @@ func getUAIDFromFQN(fqn string) string {
 	return strings.ToUpper(strings.Split(fqn, ".")[1])
 }
 
-func getMetriclyStatuses(service metricly.Service) (map[string]bool, error) {
-	statuses := make(map[string]bool)
+func (s *Service) getMetriclySamples() (map[string]float64, error) {
+	statuses := make(map[string]float64)
 	metricChan := make(chan metricly.Metric)
 	statusChan := make(chan metriclyStatus)
 	done := make(chan bool)
@@ -69,7 +55,7 @@ func getMetriclyStatuses(service metricly.Service) (map[string]bool, error) {
 
 	go func() {
 		for status := range statusChan {
-			statuses[status.uaid] = status.replicating
+			statuses[status.uaid] = status.sample
 		}
 		done <- true
 	}()
@@ -80,7 +66,7 @@ func getMetriclyStatuses(service metricly.Service) (map[string]bool, error) {
 			defer workerWaitGroup.Done()
 
 			for metric := range metricChan {
-				status, err := getMetricStatus(service, metric)
+				status, err := getMetricStatus(s.Metricly, metric)
 				if err != nil {
 					log.Printf("metricly.FetchMetricValue(%s) error: %s", metric.FQN, err)
 					continue
@@ -91,7 +77,7 @@ func getMetriclyStatuses(service metricly.Service) (map[string]bool, error) {
 		}()
 	}
 
-	metrics, err := getMetriclyList(service)
+	metrics, err := getMetriclyList(s.Metricly)
 
 	if err != nil {
 		return nil, fmt.Errorf("metricly.FetchMetrics error: %s", err)

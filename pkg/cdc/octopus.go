@@ -2,62 +2,75 @@ package cdc
 
 import (
 	"fmt"
-	"log"
-	"net/http"
-	"strings"
 
 	"github.com/michaelmosher/monitoring/pkg/octopus"
-	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
 
-type tenantMap map[string]octopus.Tenant
-type octopusStatus struct {
-	name   string
-	online bool
-}
+const (
+	nucOctopusRole = "side-server-appliances"
+	vmOctopusRole  = "linux-server"
+	dbOctopusRole  = "sql-server"
+)
 
-func octopusHTTPService(httpClient *http.Client, url string, space string, apiKey string) octopus.Service {
-	return octopus.New(
-		octopus_http.New(httpClient, url, space, apiKey),
-	)
-}
+func getOfflineNUCs(octo octopusClient) ([]octopus.Machine, error) {
+	offlineNUCs := []octopus.Machine{}
 
-func getOctopusStatuses(service octopus.Service) (map[string]octopusStatus, error) {
-	tm, err := getOctopusTenants(service)
-
-	if err != nil {
-		return nil, fmt.Errorf("octopus.FetchTenants error: %s", err)
-	}
-
-	machines, err := service.FetchMachines()
+	allMachines, err := octo.FetchMachines()
 
 	if err != nil {
 		return nil, fmt.Errorf("octopus.FetchMachines error: %s", err)
 	}
 
-	statuses := make(map[string]octopusStatus)
-
-	for _, m := range machines {
-		if m.Status == "Disabled" || len(m.TenantIds) == 0 {
+	for _, machine := range allMachines {
+		if machine.Status != "Offline" {
 			continue
 		}
 
-		statuses[getUAIDFromMachineName(m.Name)] = octopusStatus{
-			online: (m.Status != "Offline"),
-			name:   tm.findMachineName(m),
+		if _, ok := machine.Roles[nucOctopusRole]; ok == false {
+			continue
 		}
+
+		offlineNUCs = append(offlineNUCs, machine)
 	}
 
-	return statuses, nil
+	return offlineNUCs, nil
 }
 
-func getOctopusTenants(service octopus.Service) (tenantMap, error) {
-	tm := make(tenantMap)
+func getOnlineMachines(octo octopusClient) ([]octopus.Machine, error) {
+	onlineNUCs := []octopus.Machine{}
 
-	tenants, err := service.FetchTenants()
+	allMachines, err := octo.FetchMachines()
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("octopus.FetchMachines error: %s", err)
+	}
+
+	for _, machine := range allMachines {
+		if machine.Status == "Offline" {
+			continue
+		}
+
+		_, sideServer := machine.Roles[nucOctopusRole]
+		_, linuxServer := machine.Roles[vmOctopusRole]
+		_, sqlServer := machine.Roles[dbOctopusRole]
+
+		if !sideServer && !linuxServer && !sqlServer {
+			continue
+		}
+
+		onlineNUCs = append(onlineNUCs, machine)
+	}
+
+	return onlineNUCs, nil
+}
+
+func getOctopusTenants(octo octopusClient) (map[string]octopus.Tenant, error) {
+	tm := make(map[string]octopus.Tenant)
+
+	tenants, err := octo.FetchTenants()
+
+	if err != nil {
+		return nil, fmt.Errorf("octopus.FetchTenants error: %s", err)
 	}
 
 	for _, tenant := range tenants {
@@ -67,21 +80,18 @@ func getOctopusTenants(service octopus.Service) (tenantMap, error) {
 	return tm, nil
 }
 
-func getUAIDFromMachineName(name string) string {
-	return strings.Replace(name, "xx_polling-", "", 1)
-}
+func getOctopusProjectIDs(octo octopusClient, projectNames ...string) ([]string, error) {
+	projectIDs := make([]string, 0, len(projectNames))
 
-func (tm tenantMap) findMachineName(m octopus.Machine) string {
-	names := []string{}
+	for _, name := range projectNames {
+		project, err := octo.FetchProject(name)
 
-	for _, t := range m.TenantIds {
-		names = append(names, tm[t].Name)
+		if err != nil {
+			return nil, fmt.Errorf("octopus.FetchProject(%s) error: %s", name, err)
+		}
+
+		projectIDs = append(projectIDs, project.ID)
 	}
 
-	if len(names) == 0 || names[0] == "" {
-		log.Printf("Couldn't find a name for %+v", m)
-		return "unknown name"
-	}
-
-	return strings.Join(names, ", ")
+	return projectIDs, nil
 }
