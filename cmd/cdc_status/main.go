@@ -18,12 +18,17 @@ import (
 	octopus_http "github.com/michaelmosher/monitoring/pkg/octopus/http"
 )
 
+type octopusCredentials struct {
+	Label       string `hcl:",label"`
+	InstanceURL string `hcl:"instanceURL"`
+	APIKey      string `hcl:"apiKey"`
+	Space       string `hcl:"space"`
+}
+
 type octopusConfig struct {
-	InstanceURL string   `hcl:"instanceURL"`
-	APIKey      string   `hcl:"apiKey"`
-	Space       string   `hcl:"space"`
-	CDCProjects []string `hcl:"cdcProjects"`
-	Extra       hcl.Body `hcl:",remain"`
+	Credentials []octopusCredentials `hcl:"credentials,block"`
+	CDCProjects []string             `hcl:"cdcProjects"`
+	Extra       hcl.Body             `hcl:",remain"`
 }
 
 type metriclyConfig struct {
@@ -54,14 +59,21 @@ func main() {
 		),
 	}
 
-	asiOcto := octopus.New(
-		octopus_http.New(
-			httpClient,
-			config.Octopus.InstanceURL,
-			config.Octopus.Space,
-			config.Octopus.APIKey,
-		),
-	)
+	var asiOcto, aosOcto octopus.Service
+
+	for _, block := range config.Octopus.Credentials {
+		if block.Label == "ASI" {
+			asiOcto = octopus.New(
+				octopus_http.New(httpClient, block.InstanceURL, block.Space, block.APIKey),
+			)
+		}
+
+		if block.Label == "AOS" {
+			aosOcto = octopus.New(
+				octopus_http.New(httpClient, block.InstanceURL, block.Space, block.APIKey),
+			)
+		}
+	}
 
 	fmt.Println("Current CDC Install/Replication status:")
 
@@ -87,8 +99,20 @@ func main() {
 		}
 	}()
 
+	aosIdle := make(chan string)
+
+	go func() {
+		defer close(aosIdle)
+
+		machines, _ := service.CheckIdleMachines(aosOcto, config.Octopus.CDCProjects...)
+		for _, n := range machines {
+			aosIdle <- n
+		}
+	}()
+
 	printOfflineNUCs(offline)
-	printIdleMachines(idle)
+	printIdleASIMachines(idle)
+	printIdleAOSMachines(aosIdle)
 }
 
 func readConfigFile(cfg *mainConfig) {
@@ -105,8 +129,12 @@ func printOfflineNUCs(nucsChan <-chan string) {
 	printFromChannel("NUCs offline this morning", nucsChan)
 }
 
-func printIdleMachines(idleChan <-chan string) {
+func printIdleASIMachines(idleChan <-chan string) {
 	printFromChannel("NUCs or VMs Online but not replicating", idleChan)
+}
+
+func printIdleAOSMachines(idleChan <-chan string) {
+	printFromChannel("AOS Systems not replicating", idleChan)
 }
 
 func printFromChannel(summary string, channel <-chan string) {

@@ -9,6 +9,7 @@ import (
 const (
 	nucOctopusRole = "side-server-appliances"
 	vmOctopusRole  = "linux-server"
+	dbOctopusRole  = "sql-server"
 )
 
 func getOfflineNUCs(octo octopusClient) ([]octopus.Machine, error) {
@@ -51,8 +52,9 @@ func getOnlineMachines(octo octopusClient) ([]octopus.Machine, error) {
 
 		_, sideServer := machine.Roles[nucOctopusRole]
 		_, linuxServer := machine.Roles[vmOctopusRole]
+		_, sqlServer := machine.Roles[dbOctopusRole]
 
-		if !sideServer && !linuxServer {
+		if !sideServer && !linuxServer && !sqlServer {
 			continue
 		}
 
