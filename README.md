@@ -31,7 +31,7 @@ export GOPATH="$HOME/my_new_go_path" GOBIN="my_goodie_bag"
 From the root of this repo, you can install a command using `go install`:
 
 ```shell
-$ go install go build github.com/michaelmosher/monitoring/cmd/cdc_status
+$ go install github.com/michaelmosher/monitoring/cmd/cdc_status
 ```
 
 **Note**: Don't forget to add `$GOPATH/$GOBIN` to your `$PATH`:
