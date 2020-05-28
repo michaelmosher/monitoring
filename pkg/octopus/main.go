@@ -98,9 +98,16 @@ func (t *Tenant) UnmarshalJSON(data []byte) error {
 			if variables, ok := variableSet["Variables"]; ok {
 				variables := variables.(map[string]interface{})
 
-				for id, value := range variables {
+				for id, v := range variables {
 					varName := t.Variables[id]
-					t.Variables[varName] = value.(string)
+
+					switch varValue := v.(type) {
+					case string:
+						t.Variables[varName] = varValue
+					default:
+						continue
+					}
+
 					delete(t.Variables, id)
 				}
 			}
