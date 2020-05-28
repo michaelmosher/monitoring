@@ -27,27 +27,26 @@ type metricCache struct {
 
 type Service struct {
 	Metricly    metriclyClient
-	Octopus     octopusClient
 	metricCache metricCache
 }
 
 // CheckOfflineNUCs returns a slice of Tenant names.
-func (s *Service) CheckOfflineNUCs(projectNames ...string) ([]string, error) {
+func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) ([]string, error) {
 	offline := []string{}
 
-	offlineNUCs, err := s.getOfflineNUCs()
+	offlineNUCs, err := getOfflineNUCs(octo)
 
 	if err != nil {
 		return nil, err
 	}
 
-	tenants, err := s.getOctopusTenants()
+	tenants, err := getOctopusTenants(octo)
 
 	if err != nil {
 		return nil, err
 	}
 
-	projects, err := s.getOctopusProjectIDs(projectNames...)
+	projects, err := getOctopusProjectIDs(octo, projectNames...)
 
 	if err != nil {
 		return nil, err
@@ -68,22 +67,22 @@ func (s *Service) CheckOfflineNUCs(projectNames ...string) ([]string, error) {
 }
 
 // CheckIdleMachines returns a slice of Tenant names.
-func (s *Service) CheckIdleMachines(projectNames ...string) ([]string, error) {
+func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) ([]string, error) {
 	idle := []string{}
 
-	onlineMachines, err := s.getOnlineMachines()
+	onlineMachines, err := getOnlineMachines(octo)
 
 	if err != nil {
 		return nil, err
 	}
 
-	tenants, err := s.getOctopusTenants()
+	tenants, err := getOctopusTenants(octo)
 
 	if err != nil {
 		return nil, err
 	}
 
-	projects, err := s.getOctopusProjectIDs(projectNames...)
+	projects, err := getOctopusProjectIDs(octo, projectNames...)
 
 	if err != nil {
 		return nil, err
@@ -112,6 +111,7 @@ func (s *Service) CheckIdleMachines(projectNames ...string) ([]string, error) {
 				for _, p := range projects {
 					if _, ok := tenant.ProjectIDs[p]; ok == true {
 						idle = append(idle, tenant.Name)
+						break
 					}
 				}
 			}

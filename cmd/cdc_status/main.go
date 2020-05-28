@@ -52,37 +52,39 @@ func main() {
 				Password:   config.Metricly.Password,
 			},
 		),
-		Octopus: octopus.New(
-			octopus_http.New(
-				httpClient,
-				config.Octopus.InstanceURL,
-				config.Octopus.Space,
-				config.Octopus.APIKey,
-			),
-		),
 	}
+
+	asiOcto := octopus.New(
+		octopus_http.New(
+			httpClient,
+			config.Octopus.InstanceURL,
+			config.Octopus.Space,
+			config.Octopus.APIKey,
+		),
+	)
 
 	fmt.Println("Current CDC Install/Replication status:")
 
 	offline := make(chan string)
 
 	go func() {
-		nucs, _ := service.CheckOfflineNUCs(config.Octopus.CDCProjects...)
+		defer close(offline)
+
+		nucs, _ := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
 		for _, n := range nucs {
 			offline <- n
 		}
-		close(offline)
 	}()
 
 	idle := make(chan string)
 
 	go func() {
-		machines, _ := service.CheckIdleMachines(config.Octopus.CDCProjects...)
+		defer close(idle)
 
+		machines, _ := service.CheckIdleMachines(asiOcto, config.Octopus.CDCProjects...)
 		for _, n := range machines {
 			idle <- n
 		}
-		close(idle)
 	}()
 
 	printOfflineNUCs(offline)
@@ -114,7 +116,7 @@ func printFromChannel(summary string, channel <-chan string) {
 
 	if first == "" {
 		// unset value means the channel closed without sending data
-		fmt.Println("none")
+		fmt.Println(" none")
 	} else {
 		fmt.Printf("\n    - %s\n", first)
 	}
