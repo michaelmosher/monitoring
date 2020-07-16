@@ -133,13 +133,3 @@ func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) 
 
 	return idle, nil
 }
-
-// CheckIdleAOS returns a slice of NUC ID strings.
-func CheckIdleAOS(projectNames ...string) ([]string, error) {
-	idle := []string{}
-	// octopus machines with status != offline,
-	//		role contains "sql-server",
-	//		metricly replica lag exists,
-	//		and metricly lag > 600
-	return idle, nil
-}
