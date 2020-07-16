@@ -1,6 +1,9 @@
 package octopus
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Machine struct {
 	Name      string
@@ -117,6 +120,12 @@ func (t *Tenant) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type Event struct {
+	ID       string
+	Category string
+	Occurred time.Time
+}
+
 type client interface {
 	FetchMachines() ([]Machine, error)
 	FetchMachine(machineID string) (Machine, error)
@@ -126,6 +135,8 @@ type client interface {
 
 	FetchTenants() ([]Tenant, error)
 	FetchTenant(tenantID string) (Tenant, error)
+
+	FetchEvents(filter map[string]string) ([]Event, error)
 }
 
 type Service struct {
@@ -160,4 +171,8 @@ func (s Service) FetchTenants() ([]Tenant, error) {
 
 func (s Service) FetchTenant(tenantID string) (Tenant, error) {
 	return s.client.FetchTenant(tenantID)
+}
+
+func (s Service) FetchEvents(filter map[string]string) ([]Event, error) {
+	return s.client.FetchEvents(filter)
 }
