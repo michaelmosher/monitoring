@@ -6,6 +6,7 @@ import (
 )
 
 type Machine struct {
+	ID        string
 	Name      string
 	Status    string
 	Roles     map[string]struct{}
@@ -18,6 +19,7 @@ func (m *Machine) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	m.ID = v["Id"].(string)
 	m.Name = v["Name"].(string)
 	m.Status = v["Status"].(string)
 	m.Roles = make(map[string]struct{})

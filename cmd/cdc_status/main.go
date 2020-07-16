@@ -41,6 +41,11 @@ type mainConfig struct {
 	Octopus  octopusConfig  `hcl:"Octopus,block"`
 }
 
+type unhealthyResult struct {
+	name     string
+	duration float64
+}
+
 func main() {
 	var config mainConfig
 	readConfigFile(&config)
@@ -77,14 +82,14 @@ func main() {
 
 	fmt.Println("Current CDC Install/Replication status:")
 
-	offline := make(chan string)
+	offline := make(chan unhealthyResult)
 
 	go func() {
 		defer close(offline)
 
-		nucs, _ := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
-		for _, n := range nucs {
-			offline <- n
+		results, _ := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
+		for name, duration := range results {
+			offline <- unhealthyResult{name, duration}
 		}
 	}()
 
@@ -125,8 +130,17 @@ func readConfigFile(cfg *mainConfig) {
 	}
 }
 
-func printOfflineNUCs(nucsChan <-chan string) {
-	printFromChannel("NUCs offline this morning", nucsChan)
+func printOfflineNUCs(nucsChan <-chan unhealthyResult) {
+	offlineStringChan := make(chan string)
+
+	go func() {
+		defer close(offlineStringChan)
+		for ir := range nucsChan {
+			offlineStringChan <- fmt.Sprintf("%s (offline for %.1f hours)", ir.name, ir.duration)
+		}
+	}()
+
+	printFromChannel("NUCs offline this morning", offlineStringChan)
 }
 
 func printIdleASIMachines(idleChan <-chan string) {

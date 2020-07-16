@@ -36,6 +36,27 @@ func getOfflineNUCs(octo octopusClient) ([]octopus.Machine, error) {
 	return offlineNUCs, nil
 }
 
+func getLatestOfflineEvent(octo octopusClient, machine octopus.Machine) (octopus.Event, error) {
+	filter := map[string]string{
+		"regarding": machine.ID,
+		"groups":    "MachineCritical",
+		"take":      "1",
+	}
+
+	nullEvent := octopus.Event{}
+	events, err := octo.FetchEvents(filter)
+
+	if err != nil {
+		return nullEvent, fmt.Errorf("octopus.FetchEvents error: %s", err)
+	}
+
+	if len(events) == 0 {
+		return nullEvent, fmt.Errorf("octopus.FetchEvents returned 0 events")
+	}
+
+	return events[0], nil
+}
+
 func getOnlineMachines(octo octopusClient) ([]octopus.Machine, error) {
 	onlineNUCs := []octopus.Machine{}
 

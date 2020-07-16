@@ -3,6 +3,7 @@ package cdc
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/michaelmosher/monitoring/pkg/metricly"
 	"github.com/michaelmosher/monitoring/pkg/octopus"
@@ -17,6 +18,7 @@ type octopusClient interface {
 	FetchMachines() ([]octopus.Machine, error)
 	FetchTenants() ([]octopus.Tenant, error)
 	FetchProject(string) (octopus.Project, error)
+	FetchEvents(filter map[string]string) ([]octopus.Event, error)
 }
 
 type metricCache struct {
@@ -31,8 +33,8 @@ type Service struct {
 }
 
 // CheckOfflineNUCs returns a slice of Tenant names.
-func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) ([]string, error) {
-	offline := []string{}
+func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) (map[string]float64, error) {
+	offlineWithDurations := make(map[string]float64)
 
 	offlineNUCs, err := getOfflineNUCs(octo)
 
@@ -53,17 +55,28 @@ func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) (
 	}
 
 	for _, nuc := range offlineNUCs {
+		offline := false
+
 		for id := range nuc.TenantIDs {
 			tenant := tenants[id]
 			for _, p := range projects {
 				if _, ok := tenant.ProjectIDs[p]; ok == true {
-					offline = append(offline, tenant.Name)
+					offline = true
 				}
+			}
+
+			if offline {
+				event, err := getLatestOfflineEvent(octo, nuc)
+				if err != nil {
+					return nil, err
+				}
+
+				offlineWithDurations[tenant.Name] = time.Now().Sub(event.Occurred).Hours()
 			}
 		}
 	}
 
-	return offline, nil
+	return offlineWithDurations, nil
 }
 
 // CheckIdleMachines returns a slice of Tenant names.
