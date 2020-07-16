@@ -3,6 +3,7 @@ package cdc
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/michaelmosher/monitoring/pkg/metricly"
 	"github.com/michaelmosher/monitoring/pkg/octopus"
@@ -17,6 +18,7 @@ type octopusClient interface {
 	FetchMachines() ([]octopus.Machine, error)
 	FetchTenants() ([]octopus.Tenant, error)
 	FetchProject(string) (octopus.Project, error)
+	FetchEvents(filter map[string]string) ([]octopus.Event, error)
 }
 
 type metricCache struct {
@@ -31,8 +33,8 @@ type Service struct {
 }
 
 // CheckOfflineNUCs returns a slice of Tenant names.
-func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) ([]string, error) {
-	offline := []string{}
+func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) (map[string]float64, error) {
+	offlineWithDurations := make(map[string]float64)
 
 	offlineNUCs, err := getOfflineNUCs(octo)
 
@@ -53,22 +55,33 @@ func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) (
 	}
 
 	for _, nuc := range offlineNUCs {
+		offline := false
+
 		for id := range nuc.TenantIDs {
 			tenant := tenants[id]
 			for _, p := range projects {
 				if _, ok := tenant.ProjectIDs[p]; ok == true {
-					offline = append(offline, tenant.Name)
+					offline = true
 				}
+			}
+
+			if offline {
+				event, err := getLatestOfflineEvent(octo, nuc)
+				if err != nil {
+					return nil, err
+				}
+
+				offlineWithDurations[tenant.Name] = time.Now().Sub(event.Occurred).Hours()
 			}
 		}
 	}
 
-	return offline, nil
+	return offlineWithDurations, nil
 }
 
 // CheckIdleMachines returns a slice of Tenant names.
-func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) ([]string, error) {
-	idle := []string{}
+func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) (map[string]float64, error) {
+	idle := make(map[string]float64)
 
 	onlineMachines, err := getOnlineMachines(octo)
 
@@ -110,7 +123,7 @@ func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) 
 			if latency > 600 {
 				for _, p := range projects {
 					if _, ok := tenant.ProjectIDs[p]; ok == true {
-						idle = append(idle, tenant.Name)
+						idle[tenant.Name] = latency
 						break
 					}
 				}
@@ -118,15 +131,5 @@ func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) 
 		}
 	}
 
-	return idle, nil
-}
-
-// CheckIdleAOS returns a slice of NUC ID strings.
-func CheckIdleAOS(projectNames ...string) ([]string, error) {
-	idle := []string{}
-	// octopus machines with status != offline,
-	//		role contains "sql-server",
-	//		metricly replica lag exists,
-	//		and metricly lag > 600
 	return idle, nil
 }
