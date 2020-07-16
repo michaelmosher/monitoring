@@ -93,25 +93,25 @@ func main() {
 		}
 	}()
 
-	idle := make(chan string)
+	idle := make(chan unhealthyResult)
 
 	go func() {
 		defer close(idle)
 
 		machines, _ := service.CheckIdleMachines(asiOcto, config.Octopus.CDCProjects...)
-		for _, n := range machines {
-			idle <- n
+		for name, latency := range machines {
+			idle <- unhealthyResult{name, latency}
 		}
 	}()
 
-	aosIdle := make(chan string)
+	aosIdle := make(chan unhealthyResult)
 
 	go func() {
 		defer close(aosIdle)
 
 		machines, _ := service.CheckIdleMachines(aosOcto, config.Octopus.CDCProjects...)
-		for _, n := range machines {
-			aosIdle <- n
+		for name, latency := range machines {
+			aosIdle <- unhealthyResult{name, latency}
 		}
 	}()
 
@@ -143,12 +143,30 @@ func printOfflineNUCs(nucsChan <-chan unhealthyResult) {
 	printFromChannel("NUCs offline this morning", offlineStringChan)
 }
 
-func printIdleASIMachines(idleChan <-chan string) {
-	printFromChannel("NUCs or VMs Online but not replicating", idleChan)
+func printIdleASIMachines(idleChan <-chan unhealthyResult) {
+	idleStringChan := make(chan string)
+
+	go func() {
+		defer close(idleStringChan)
+		for ir := range idleChan {
+			idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+		}
+	}()
+
+	printFromChannel("NUCs or VMs Online but not replicating", idleStringChan)
 }
 
-func printIdleAOSMachines(idleChan <-chan string) {
-	printFromChannel("AOS Systems not replicating", idleChan)
+func printIdleAOSMachines(idleChan <-chan unhealthyResult) {
+	idleStringChan := make(chan string)
+
+	go func() {
+		defer close(idleStringChan)
+		for ir := range idleChan {
+			idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+		}
+	}()
+
+	printFromChannel("AOS Systems not replicating", idleStringChan)
 }
 
 func printFromChannel(summary string, channel <-chan string) {

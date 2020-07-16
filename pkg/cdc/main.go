@@ -80,8 +80,8 @@ func (s *Service) CheckOfflineNUCs(octo octopusClient, projectNames ...string) (
 }
 
 // CheckIdleMachines returns a slice of Tenant names.
-func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) ([]string, error) {
-	idle := []string{}
+func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) (map[string]float64, error) {
+	idle := make(map[string]float64)
 
 	onlineMachines, err := getOnlineMachines(octo)
 
@@ -123,7 +123,7 @@ func (s *Service) CheckIdleMachines(octo octopusClient, projectNames ...string) 
 			if latency > 600 {
 				for _, p := range projects {
 					if _, ok := tenant.ProjectIDs[p]; ok == true {
-						idle = append(idle, tenant.Name)
+						idle[tenant.Name] = latency
 						break
 					}
 				}
