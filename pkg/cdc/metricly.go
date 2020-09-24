@@ -10,7 +10,7 @@ import (
 	"github.com/michaelmosher/monitoring/pkg/metricly"
 )
 
-const metriclyMaxResults = 60
+const metriclyMaxResults = 100
 const metriclyWorkers = 8
 
 type metriclyStatus struct {
