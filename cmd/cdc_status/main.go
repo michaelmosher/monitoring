@@ -42,6 +42,7 @@ type mainConfig struct {
 }
 
 type unhealthyResult struct {
+	problem  error
 	name     string
 	duration float64
 }
@@ -87,9 +88,15 @@ func main() {
 	go func() {
 		defer close(offline)
 
-		results, _ := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
+		results, err := service.CheckOfflineNUCs(asiOcto, config.Octopus.CDCProjects...)
+
+		if err != nil {
+			offline <- unhealthyResult{problem: err}
+			return
+		}
+
 		for name, duration := range results {
-			offline <- unhealthyResult{name, duration}
+			offline <- unhealthyResult{nil, name, duration}
 		}
 	}()
 
@@ -98,9 +105,15 @@ func main() {
 	go func() {
 		defer close(idle)
 
-		machines, _ := service.CheckIdleMachines(asiOcto, config.Octopus.CDCProjects...)
+		machines, err := service.CheckIdleMachines(asiOcto, config.Octopus.CDCProjects...)
+
+		if err != nil {
+			idle <- unhealthyResult{problem: err}
+			return
+		}
+
 		for name, latency := range machines {
-			idle <- unhealthyResult{name, latency}
+			idle <- unhealthyResult{nil, name, latency}
 		}
 	}()
 
@@ -109,9 +122,15 @@ func main() {
 	go func() {
 		defer close(aosIdle)
 
-		machines, _ := service.CheckIdleMachines(aosOcto, config.Octopus.CDCProjects...)
+		machines, err := service.CheckIdleMachines(aosOcto, config.Octopus.CDCProjects...)
+
+		if err != nil {
+			aosIdle <- unhealthyResult{problem: err}
+			return
+		}
+
 		for name, latency := range machines {
-			aosIdle <- unhealthyResult{name, latency}
+			aosIdle <- unhealthyResult{nil, name, latency}
 		}
 	}()
 
@@ -135,8 +154,14 @@ func printOfflineNUCs(nucsChan <-chan unhealthyResult) {
 
 	go func() {
 		defer close(offlineStringChan)
+
 		for ir := range nucsChan {
-			offlineStringChan <- fmt.Sprintf("%s (offline for %.1f hours)", ir.name, ir.duration)
+			if ir.problem != nil {
+				offlineStringChan <- fmt.Sprintf("unknown")
+				offlineStringChan <- fmt.Sprintf("%+v", ir.problem)
+			} else {
+				offlineStringChan <- fmt.Sprintf("%s (offline for %.1f hours)", ir.name, ir.duration)
+			}
 		}
 	}()
 
@@ -149,7 +174,12 @@ func printIdleASIMachines(idleChan <-chan unhealthyResult) {
 	go func() {
 		defer close(idleStringChan)
 		for ir := range idleChan {
-			idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+			if ir.problem != nil {
+				idleStringChan <- fmt.Sprintf("unknown")
+				idleStringChan <- fmt.Sprintf("%+v", ir.problem)
+			} else {
+				idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+			}
 		}
 	}()
 
@@ -162,7 +192,12 @@ func printIdleAOSMachines(idleChan <-chan unhealthyResult) {
 	go func() {
 		defer close(idleStringChan)
 		for ir := range idleChan {
-			idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+			if ir.problem != nil {
+				idleStringChan <- fmt.Sprintf("unknown")
+				idleStringChan <- fmt.Sprintf("%+v", ir.problem)
+			} else {
+				idleStringChan <- fmt.Sprintf("%s (idle for %.1f hours)", ir.name, ir.duration/3600)
+			}
 		}
 	}()
 
@@ -177,6 +212,8 @@ func printFromChannel(summary string, channel <-chan string) {
 	if first == "" {
 		// unset value means the channel closed without sending data
 		fmt.Println(" none")
+	} else if first == "unknown" {
+		fmt.Println(" unknown")
 	} else {
 		fmt.Printf("\n    - %s\n", first)
 	}
