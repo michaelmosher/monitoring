@@ -30,6 +30,10 @@ func (s Service) FetchMetricValue(metric metricly.Metric) (float64, error) {
 		return 0, fmt.Errorf("error executing API request: %v", err)
 	}
 
+	if resp.StatusCode != 200 {
+		return 0, handleErrorResponse(resp, "samples")
+	}
+
 	return handleSampleResponse(resp)
 }
 

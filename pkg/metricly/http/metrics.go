@@ -30,6 +30,10 @@ func (s Service) FetchMetrics(query metricly.MetricQuery) ([]metricly.Metric, er
 		return nil, fmt.Errorf("error executing API request: %v", err)
 	}
 
+	if resp.StatusCode != 200 {
+		return nil, handleErrorResponse(resp, "metrics")
+	}
+
 	return handleMetricsResponse(resp)
 }
 
