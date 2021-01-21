@@ -22,7 +22,7 @@ func getMetriclyList(service metriclyClient) ([]metricly.Metric, error) {
 	metricsQuery := new(metricly.MetricQuery).
 		SetStartDate(time.Now().Add(-1*time.Hour)).
 		SetEndDate(time.Now()).
-		AddElement("prod-hvr-hub-001").
+		AddElement("prod-hvr-hub-asi-001").
 		AddMetric("hvr_latency").
 		SetSourceIncludes("fqn", "id", "element").
 		SetSort("fqn", "asc")
