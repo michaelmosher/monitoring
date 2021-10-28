@@ -57,27 +57,17 @@ func (s Service) FetchMachine(machineID string) (octopus.Machine, error) {
 func handleMachinesResponse(resp *http.Response) ([]octopus.Machine, error) {
 	defer resp.Body.Close()
 
-	list := make([]octopus.Machine, 0)
-	dec := json.NewDecoder(resp.Body)
-
-	// throw away opening '['
-	dec.Token()
-
-	for dec.More() {
-		var m octopus.Machine
-		err := dec.Decode(&m)
-
-		if err != nil {
-			return list, fmt.Errorf("Error decoding JSON: %v", err)
-		}
-
-		list = append(list, m)
+	type machineList struct {
+		machines []octopus.Machine
 	}
 
-	// throw away closing ']'
-	dec.Token()
+	list := machineList{}
+	err := json.NewDecoder(resp.Body).Decode(&list.machines)
+	if err != nil {
+		return nil, fmt.Errorf("Error decoding JSON: %v", err)
+	}
 
-	return list, nil
+	return list.machines, nil
 }
 
 func handleMachineResponse(resp *http.Response, m *octopus.Machine) error {

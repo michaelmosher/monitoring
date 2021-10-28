@@ -21,7 +21,7 @@ func (m *Machine) UnmarshalJSON(data []byte) error {
 
 	m.ID = v["Id"].(string)
 	m.Name = v["Name"].(string)
-	m.Status = v["Status"].(string)
+	m.Status = v["HealthStatus"].(string)
 	m.Roles = make(map[string]struct{})
 	m.TenantIDs = make(map[string]struct{})
 
