@@ -22,7 +22,7 @@ func getOfflineNUCs(octo octopusClient) ([]octopus.Machine, error) {
 	}
 
 	for _, machine := range allMachines {
-		if machine.Status != "Offline" {
+		if machine.Status != "Unavailable" {
 			continue
 		}
 
